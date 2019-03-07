@@ -13,13 +13,13 @@ import torch.utils.data
 from torch.nn import DataParallel
 from datetime import datetime
 from backbone.model import SE_IR, MobileFaceNet, l2_norm
-from backbone.model_irse import IR_50
+from backbone.MNasnet import MnasNet
 from margin.ArcMarginProduct import ArcMarginProduct
 from utils.visualize import Visualizer
 from utils.logging import init_log
-from dataset.casia_webface import CASIAWebFace
+
 from dataset.VGG_FP import VGG_FP
-from config import get_config_train
+from config import get_config
 from dataset.lfw import LFW
 from dataset.agedb import AgeDB30
 from dataset.cfp import CFP_FP
@@ -31,7 +31,7 @@ import numpy as np
 import torchvision.transforms as transforms
 import argparse
 from torchsummary import summary
-config = get_config_train()
+config = get_config(mode = 'training_eval')
 def train(args):
     # gpu init
     multi_gpus = False
@@ -41,44 +41,47 @@ def train(args):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # log init
-    save_dir = os.path.join(args.save_dir, args.backbone.upper() + datetime.now().strftime('%Y%m%d_%H%M%S'))
-    if os.path.exists(save_dir):
-        raise NameError('model dir exists!')
-    os.makedirs(save_dir)
+    save_dir = os.path.join(args.save_dir, args.backbone.upper() + datetime.now().date().strftime('%Y%m%d'))
+    if not os.path.exists(save_dir):
+        #raise NameError('model dir exists!')
+        os.makedirs(save_dir)
     logging = init_log(save_dir)
     _print = logging.info
 
     # dataset loader
     transform = transforms.Compose([
         transforms.Resize((112, 112)),
+        transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
         transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
     ])
     # validation dataset
-    trainset = VGG_FP(transform=transform)
+    trainset = VGG_FP(config = config, transform=transform)
     trainloader = torch.utils.data.DataLoader(trainset, batch_size = config.batch_size,
-                                             shuffle=True, num_workers=4, drop_last=False)
-    num_iter = trainset.num_iter
+                                             shuffle=True, num_workers=8, drop_last=False)
+    num_iter = len(trainset)//config.batch_size
 
     numclass = trainset.class_nums
 
-    lfwdataset = LFW(transform=transform)
+    lfwdataset = LFW(config = config, transform=transform)
     lfwloader = torch.utils.data.DataLoader(lfwdataset, batch_size=config.batch_size,
-                                             shuffle=False, num_workers=4, drop_last=False)
-    agedbdataset = AgeDB30(transform=transform)
+                                             shuffle=False, num_workers=8, drop_last=False)
+    agedbdataset = AgeDB30(config = config,transform=transform)
     agedbloader = torch.utils.data.DataLoader(agedbdataset, batch_size=config.batch_size,
-                                            shuffle=False, num_workers=4, drop_last=False)
-    cfpfpdataset = CFP_FP(transform=transform)
+                                            shuffle=False, num_workers=8, drop_last=False)
+    cfpfpdataset = CFP_FP(config = config,transform=transform)
     cfpfploader = torch.utils.data.DataLoader(cfpfpdataset, batch_size=config.batch_size,
-                                              shuffle=False, num_workers=4, drop_last=False)
+                                              shuffle=False, num_workers=8, drop_last=False)
 
     # define backbone and margin layer
     if args.backbone == 'MobileFace':
         net = MobileFaceNet(512).to(config.device)
+    if args.backbone == 'MNasMobile':
+        net = MnasNet(512).to(config.device)
     elif args.backbone == 'SERes50_IR':
         net = SE_IR(50, 0.6, 'ir_se').to(config.device)
     elif args.backbone == 'IR_50':
-        net = IR_50((112, 112)).to(config.device)
+        net = SE_IR(50, 0.6, 'ir').to(config.device)
     else:
         print(args.backbone, ' is not available!')
 
@@ -92,15 +95,15 @@ def train(args):
         print(args.margin_type, 'is not available!')
     if args.resume:
         print('resume the model parameters from: ', args.net_path, args.margin_path)
-        net.load_state_dict(torch.load(args.net_path))
-        #margin.load_state_dict(torch.load(args.margin_path)['net_state_dict'])
+        net.load_state_dict(torch.load(args.net_path)['net_state_dict'])
+        margin.load_state_dict(torch.load(args.margin_path)['net_state_dict'])
 
     # define optimizers for different layer
     criterion = torch.nn.CrossEntropyLoss().to(device)
     optimizer_ft = optim.SGD([
-        {'params': net.parameters(), 'weight_decay': 4e-4},
-        {'params': margin.parameters(), 'weight_decay': 4e-4}
-    ], lr=0.010, momentum=0.9, nesterov=True)
+        {'params': net.parameters(), 'weight_decay': 5e-4},
+        {'params': margin.parameters(), 'weight_decay': 5e-4}
+    ], lr=0.001, momentum=0.9, nesterov=True)
     exp_lr_scheduler = lr_scheduler.MultiStepLR(optimizer_ft, milestones= config.milestones, gamma=0.1)
 
     if multi_gpus:
@@ -115,9 +118,26 @@ def train(args):
     best_agedb30_iters = 0
     best_cfp_fp_acc = 0.0
     best_cfp_fp_iters = 0
-    total_iters = 0
+    total_iters = 1
     vis = Visualizer(env= args.backbone)
     start_epoch = total_iters//num_iter
+    if args.resume:
+        total_iters = args.resume
+        with open('result/log_vis_train.txt', 'r') as fw:
+            for line in fw.readlines():
+                nodes = line.split(':')
+                vis.plot_curves({'softmax loss': np.float(nodes[1])}, iters=np.float(nodes[0]), title='train loss',
+                                xlabel='iters', ylabel='train loss')
+                vis.plot_curves({'train accuracy': np.float(nodes[2])}, iters=np.float(nodes[0]), title='train accuracy', xlabel='iters',
+                                ylabel='train accuracy')
+        with open('result/log_vis_test.txt', 'r') as fw2:
+            for line in fw2.readlines():
+                nodes = line.split(':')
+                vis.plot_curves({'lfw': np.float(nodes[1]), 'agedb-30': np.float(nodes[2]), 'cfp-fp': np.float(nodes[3])}, iters=np.float(nodes[0]),
+                                title='test accuracy', xlabel='iters', ylabel='test accuracy')
+
+
+
     print(start_epoch)
     for epoch in range(1, args.total_epoch + 1):
         exp_lr_scheduler.step()
@@ -139,8 +159,6 @@ def train(args):
             total_loss = criterion(output, label)
             total_loss.backward()
             optimizer_ft.step()
-
-            
             # print train information
             if total_iters % 200 == 0:
                 # current training accuracy
@@ -179,7 +197,7 @@ def train(args):
                     os.path.join(save_dir, 'Iter_%06d_margin.ckpt' % total_iters))
 
             # test accuracy
-            if total_iters % args.test_freq == 0:
+            if total_iters % 1 == 0:
 
                 # test model on lfw
                 net.eval()
@@ -207,16 +225,12 @@ def train(args):
                     best_cfp_fp_iters = total_iters
                 _print('Current Best Accuracy: LFW: {:.4f} in iters: {}, AgeDB-30: {:.4f} in iters: {} and CFP-FP: {:.4f} in iters: {}'.format(
                     best_lfw_acc, best_lfw_iters, best_agedb30_acc, best_agedb30_iters, best_cfp_fp_acc, best_cfp_fp_iters))
-                _print('Current Best Accuracy:LFW: {:.4f} in iters: {} and CFP-FP: {:.4f} in iters: {}'.format(
-                                            best_lfw_acc, best_lfw_iters, best_cfp_fp_acc, best_cfp_fp_iters))
+                # _print('Current Best Accuracy:LFW: {:.4f} in iters: {} and CFP-FP: {:.4f} in iters: {}'.format(
+                #                             best_lfw_acc, best_lfw_iters, best_cfp_fp_acc, best_cfp_fp_iters))
 
                 vis.plot_curves({'lfw': np.mean(lfw_accs), 'agedb-30': np.mean(age_accs), 'cfp-fp': np.mean(cfp_accs)}, iters=total_iters,
                                 title='test accuracy', xlabel='iters', ylabel='test accuracy')
-                vis.plot_curves({'lfw': np.mean(lfw_accs), 'cfp-fp': np.mean(cfp_accs)}, iters=total_iters,
-                                title='test accuracy', xlabel='iters', ylabel='test accuracy')
-                vis.plot_curves({'cfp-fp': np.mean(cfp_accs)}, iters=total_iters,
-                                title='test accuracy', xlabel='iters', ylabel='test accuracy')
-                log_vis_test.write('%d:%f:%f\n'%(total_iters, np.mean(lfw_accs), np.mean(cfp_accs)))
+                log_vis_test.write('%d:%f:%f:%f\n'%(total_iters, np.mean(lfw_accs), np.mean(cfp_accs), np.mean(age_accs)))
                 net.train()
             total_iters += 1
 
@@ -229,27 +243,16 @@ def train(args):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PyTorch for deep face recognition')
-    parser.add_argument('--train_root', type=str, default='/media/ramdisk/msra_align_112', help='train image root')
-    parser.add_argument('--train_file_list', type=str, default='/media/ramdisk/msra_align_train.list', help='train list')
-    parser.add_argument('--lfw_test_root', type=str, default='/media/ramdisk/lfw_align_112', help='lfw image root')
-    parser.add_argument('--lfw_file_list', type=str, default='/media/ramdisk/pairs.txt', help='lfw pair file list')
-    parser.add_argument('--agedb_test_root', type=str, default='/media/sda/AgeDB-30/agedb30_align_112', help='agedb image root')
-    parser.add_argument('--agedb_file_list', type=str, default='/media/sda/AgeDB-30/agedb_30_pair.txt', help='agedb pair file list')
-    parser.add_argument('--cfpfp_test_root', type=str, default='/media/sda/CFP-FP/cfp_fp_aligned_112', help='agedb image root')
-    parser.add_argument('--cfpfp_file_list', type=str, default='/media/sda/CFP-FP/cfp_fp_pair.txt', help='agedb pair file list')
-
     parser.add_argument('--backbone', type=str, default='CBAMRes50_IR', help='MobileFace, Res50_IR, SERes50_IR, SphereNet, SERes100_IR, CBAMRes50_IR, CBAMRes50_AIR')
     parser.add_argument('--margin_type', type=str, default='ArcFace', help='ArcFace, CosFace, SphereFace')
-    parser.add_argument('--feature_dim', type=int, default=512, help='feature dimension, 128 or 512')
     parser.add_argument('--scale_size', type=float, default=32.0, help='scale size')
-    parser.add_argument('--batch_size', type=int, default=256, help='batch size')
     parser.add_argument('--total_epoch', type=int, default=300, help='total epochs')
 
-    parser.add_argument('--save_freq', type=int, default=9000, help='save frequency')
-    parser.add_argument('--test_freq', type=int, default=9000, help='test frequency')
+    parser.add_argument('--save_freq', type=int, default=5000, help='save frequency')
+    parser.add_argument('--test_freq', type=int, default=5000, help='test frequency')
     parser.add_argument('--resume', type=int, default=1, help='resume model')
-    parser.add_argument('--net_path', type=str, default='model/MSCeleb_SERES50_IR/model_ir_se50.pth', help='resume model')
-    parser.add_argument('--margin_path', type=str, default='model/MSCeleb_SERES50_IR/Iter_192000_margin.ckpt', help='resume model')
+    parser.add_argument('--net_path', type=str, default='weights/MNASMOBILE20190221_023524/Iter_045000_net.ckpt', help='resume model')
+    parser.add_argument('--margin_path', type=str, default='weights/MNASMOBILE20190221_023524/Iter_045000_margin.ckpt', help='resume model')
     parser.add_argument('--save_dir', type=str, default='./weights', help='model save dir')
     parser.add_argument('--gpus', type=str, default='0', help='model prefix')
 

@@ -53,6 +53,7 @@ class PNet(nn.Module):
         self.conv4_2 = nn.Conv2d(32, 4, 1, 1)
 
         weights = np.load('mtcnn_pytorch/src/weights/pnet.npy')[()]
+        # weights = torch.load('mtcnn_pytorch/src/weights/pnet_epoch_10.pt')
         for n, p in self.named_parameters():
             p.data = torch.FloatTensor(weights[n])
 
@@ -67,7 +68,7 @@ class PNet(nn.Module):
         x = self.features(x)
         a = self.conv4_1(x)
         b = self.conv4_2(x)
-        a = F.softmax(a, dim=-1)
+        a = F.softmax(a, dim= -1)
         return b, a
 
 

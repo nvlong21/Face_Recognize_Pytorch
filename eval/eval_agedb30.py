@@ -8,16 +8,19 @@
 @desc: The AgeDB-30 test protocol is same with LFW, so I just copy the code from eval_lfw.py
 '''
 
-
+import os,sys,inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir) 
 import numpy as np
 import scipy.io
-import os
 import torch.utils.data
-from backbone import mobilefacenet, resnet, arcfacenet, cbam
+from backbone.model import SE_IR, MobileFaceNet, l2_norm
+from backbone.model_irse import IR_50
 from dataset.agedb import AgeDB30
 import torchvision.transforms as transforms
 from torch.nn import DataParallel
-import argparse
+import config
 
 def getAccuracy(scores, flags, threshold):
     p = np.sum(scores[flags == 1] > threshold)
@@ -62,19 +65,11 @@ def evaluation_10_fold(feature_path='./result/cur_epoch_agedb_result.mat'):
 def loadModel(data_root, file_list, backbone_net, gpus='0', resume=None):
 
     if backbone_net == 'MobileFace':
-        net = mobilefacenet.MobileFaceNet()
-    elif backbone_net == 'Res50_IR':
-        net = cbam.CBAMResNet_IR(50, feature_dim=args.feature_dim, mode='ir')
+        net = MobileFaceNet()
     elif backbone_net == 'SERes50_IR':
-        net = cbam.CBAMResNet_IR(50, feature_dim=args.feature_dim, mode='se_ir')
-    elif backbone_net == 'CBAMRes50_IR':
-        net = cbam.CBAMResNet_IR(50, feature_dim=args.feature_dim, mode='cbam_ir')
-    elif backbone_net == 'Res100_IR':
-        net = cbam.CBAMResNet_IR(100, feature_dim=args.feature_dim, mode='ir')
-    elif backbone_net == 'SERes100_IR':
-        net = cbam.CBAMResNet_IR(100, feature_dim=args.feature_dim, mode='se_ir')
-    elif backbone_net == 'CBAMRes100_IR':
-        net = cbam.CBAMResNet_IR(100, feature_dim=args.feature_dim, mode='cbam_ir')
+        net = Backbone(50, drop_ratio=0.4, mode='ir_se')
+    elif backbone_net == 'IR_50':
+        net = IR_50((112, 112))
     else:
         print(args.backbone, ' is not available!')
 
@@ -85,7 +80,7 @@ def loadModel(data_root, file_list, backbone_net, gpus='0', resume=None):
     os.environ['CUDA_VISIBLE_DEVICES'] = gpus
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    net.load_state_dict(torch.load(resume)['net_state_dict'])
+    net.load_state_dict(torch.load(resume))
 
     if multi_gpus:
         net = DataParallel(net).to(device)
@@ -131,22 +126,12 @@ def getFeatureFromTorch(feature_save_dir, net, device, data_set, data_loader):
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Testing')
-    parser.add_argument('--root', type=str, default='/media/sda/AgeDB-30/agedb30_align_112', help='The path of lfw data')
-    parser.add_argument('--file_list', type=str, default='/media/sda/AgeDB-30/agedb_30_pair.txt', help='The path of lfw data')
-    parser.add_argument('--resume', type=str, default='./model/MSCeleb_RES50_IR_20190115_144216/Iter_240000_net.ckpt', help='The path pf save model')
-    parser.add_argument('--backbone_net', type=str, default='Res50_IR', help='MobileFace, Res50_IR, SERes50_IR, CBAMRes50_IR, Res100_IR, SERes100_IR, CBAMRes100_IR')
-    parser.add_argument('--feature_dim', type=int, default=512, help='feature dimension')
-    parser.add_argument('--feature_save_path', type=str, default='./result/cur_epoch_agedb_result.mat',
-                        help='The path of the extract features save, must be .mat file')
-    parser.add_argument('--gpus', type=str, default='2,3', help='gpu list')
-    args = parser.parse_args()
-
-    net, device, agedb_dataset, agedb_loader = loadModel(args.root, args.file_list, args.backbone_net, args.gpus, args.resume)
-    getFeatureFromTorch(args.feature_save_path, net, device, agedb_dataset, agedb_loader)
-    ACCs = evaluation_10_fold(args.feature_save_path)
+    conf = config.get_config_train(False)
+    net, device, agedb_dataset, agedb_loader = loadModel(conf.agedb_root, conf.agedb_file_list, 'IR_50','0', './model/backbone_ir50_ms1m_epoch63.pth')
+    getFeatureFromTorch('./result/cur_agedb_result.mat', net, device, agedb_dataset, agedb_loader)
+    ACCs = evaluation_10_fold('./result/cur_agedb_result.mat')
     for i in range(len(ACCs)):
-        print('{}    {:.2f}'.format(i + 1, ACCs[i] * 100))
+        print('{}    {:.2f}'.format(i+1, ACCs[i] * 100))
     print('--------')
     print('AVE    {:.4f}'.format(np.mean(ACCs) * 100))
 

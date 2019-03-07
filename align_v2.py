@@ -7,15 +7,16 @@ import time
 from Face_Alignt.matlab_cp2tform import get_similarity_transform_for_cv2
 from PIL import Image
 import math
-def alignment(src_img,src_pts, crop_size = (112, 112)):
-    ref_pts = np.array([ [30.2946, 51.6963],
+def alignment(src_img, src_pts, default_square = True):
+    ref_pts = np.array([[30.2946, 51.6963],
       [65.5318, 51.5014],
       [48.0252, 71.7366],
       [33.5493, 92.3655],
-      [62.7299, 92.2041] ])
-    
-    if crop_size[1]==112:
+      [62.7299, 92.2041]])
+    crop_size = (112, 112)
+    if crop_size[1]==112 and default_square:
         ref_pts[:,0] += 8.0
+
     src_pts = np.array(src_pts).reshape(5,2)
     
     s = np.array(src_pts).astype(np.float32)
@@ -149,7 +150,9 @@ class Face_Alignt():
         return boxes, faces
     def align(self, img):
         boxes, faces = self.detect(img)
-        return faces[0]
+        if len(faces) > 0:
+            return faces[0]
+        return None
     def detect(self, file, limit=None, min_face_size=30.0):
         def change(boxes,ldmks, h, w, pad1):
             index_x = torch.LongTensor([0,2,4,6,8])
@@ -195,11 +198,11 @@ class Face_Alignt():
             img_size /= 2
             if img_scale == 6:
                 break
-        img_size = 64
+        img_size = 32
         img_pyramid = []
         t_boxes,t_probs, t_anchors, t_crops, t_which = None, None, None, None, None
         
-        for scale in range(4):
+        for scale in range(5):
             # print('scale:{0} img_size:{1}'.format(scale, img_size))
             input_img = cv2.resize(img,(img_size, img_size))
             img_pyramid.append(input_img.transpose(2,0,1))
@@ -274,13 +277,15 @@ class Face_Alignt():
         for i in range(num_face):
 
             box, prob, ldmk = t_boxes[i], max_conf[i], t_ldmks[i]
-            if prob <= 0.8:
+            if prob <= 0.87:
                 continue
             ldmk_fn = ldmk.reshape(5,2)
             x1 = max(int(box[0]) - 5, 0)
             x2 = min(int(box[2]) + 5, im.shape[1])
             y1 = max(int(box[1])- 5, 0)
             y2 = min(int(box[3]) + 5, im.shape[0])
+            if x2-x1 < 50:
+                continue
             bbox = [x1, y1, x2, y2, prob]
             r_bboxes.append(bbox)
             face = alignment(im, ldmk_fn)

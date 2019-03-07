@@ -77,16 +77,11 @@ def get_reference_facial_points(output_size=None,
 
     tmp_5pts = np.array(REFERENCE_FACIAL_POINTS)
     tmp_crop_size = np.array(DEFAULT_CROP_SIZE)
-
     # 0) make the inner region a square
     if default_square:
         size_diff = max(tmp_crop_size) - tmp_crop_size
         tmp_5pts += size_diff / 2
         tmp_crop_size += size_diff
-
-    #print('---> default:')
-    #print('              crop_size = ', tmp_crop_size)
-    #print('              reference_5pts = ', tmp_5pts)
 
     if (output_size and
             output_size[0] == tmp_crop_size[0] and

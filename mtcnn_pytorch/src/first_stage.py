@@ -29,6 +29,8 @@ def run_first_stage(image, net, scale, threshold):
     sw, sh = math.ceil(width*scale), math.ceil(height*scale)
     img = image.resize((sw, sh), Image.BILINEAR)
     img = np.asarray(img, 'float32')
+    if len(img.shape) == 2:
+        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
 
     img = torch.FloatTensor(_preprocess(img)).to(device)
     with torch.no_grad():

@@ -10,7 +10,7 @@ import torch
 from backbone.model import l2_norm
 import pdb
 import cv2
-
+from pathlib import Path
 def separate_bn_paras(modules):
     if not isinstance(modules, list):
         modules = [*modules.modules()]
@@ -32,21 +32,29 @@ def prepare_facebank(conf, model, mtcnn, tta = True):
     model.eval()
     embeddings =  []
     names = ['Unknown']
-    for path in conf.facebank_path.iterdir():
+    for path in Path(conf.facebank_path).iterdir():
         if path.is_file():
             continue
         else:
             embs = []
             for file in path.iterdir():
+
                 if not file.is_file():
                     continue
                 else:
                     try:
                         img = Image.open(file)
+                        image = np.array(img)
+                        if image.shape[2] >3:
+                            img = Image.fromarray(image[...,:3])
+
                     except:
                         continue
+                    
                     if img.size != (112, 112):
                         img = mtcnn.align(img)
+                    if img is None:
+                        continue
                     with torch.no_grad():
                         if tta:
                             mirror = trans.functional.hflip(img)
@@ -62,13 +70,58 @@ def prepare_facebank(conf, model, mtcnn, tta = True):
         names.append(path.name)
     embeddings = torch.cat(embeddings)
     names = np.array(names)
-    torch.save(embeddings, conf.facebank_path/'facebank.pth')
-    np.save(conf.facebank_path/'names', names)
+    torch.save(embeddings, '%s/facebank.pth'%conf.facebank_path)
+    np.save('%s/names'%conf.facebank_path, names)
+    return embeddings, names
+def prepare_facebank_np(conf, model, mtcnn, tta = True):
+    model.eval()
+    embeddings =  []
+    names = ['Unknown']
+    for path in Path(conf.facebank_path).iterdir():
+        if path.is_file():
+            continue
+        else:
+            embs = []
+            for file in path.iterdir():
+
+                if not file.is_file():
+                    continue
+                else:
+                    try:
+                        img = Image.open(file)
+                        image = np.array(img)
+                        if image.shape[2] >3:
+                            img = Image.fromarray(image[...,:3])
+
+                    except:
+                        continue
+                    
+                    if img.size != (112, 112):
+                        img = mtcnn.align(img)
+                    if img is None:
+                        continue
+                    with torch.no_grad():
+                        if tta:
+                            mirror = trans.functional.hflip(img)
+                            emb = model(conf.test_transform(img).to(conf.device).unsqueeze(0))
+                            emb_mirror = model(conf.test_transform(mirror).to(conf.device).unsqueeze(0))
+                            embs.append(l2_norm(emb + emb_mirror).data.cpu().numpy())
+                        else:                        
+                            embs.append(model(conf.test_transform(img).to(conf.device).unsqueeze(0)))
+        if len(embs) == 0:
+            continue
+        embedding = np.mean(embs,axis=0)
+        embeddings.append(embedding[0])
+        names.append(path.name)
+    embeddings = np.array(embeddings)
+    names = np.array(names)
+    torch.save(embeddings, '%s/facebank.pth'%conf.facebank_path)
+    np.save('%s/names'%conf.facebank_path, names)
     return embeddings, names
 
 def load_facebank(conf):
-    embeddings = torch.load(conf.facebank_path/'facebank.pth')
-    names = np.load(conf.facebank_path/'names.npy')
+    embeddings = torch.load('%s/facebank.pth'%conf.facebank_path)
+    names = np.load('%s/names.npy'%conf.facebank_path)
     return embeddings, names
 
 
@@ -98,10 +151,10 @@ def draw_box_name(bbox,name,frame):
     frame = cv2.rectangle(frame,(bbox[0],bbox[1]),(bbox[2],bbox[3]),(0,0,255),6)
     frame = cv2.putText(frame,
                     name,
-                    (bbox[0],bbox[1]), 
+                    (bbox[0],bbox[1]+30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 
-                    2,
+                    1,
                     (0,255,0),
-                    3,
+                    1,
                     cv2.LINE_AA)
     return frame

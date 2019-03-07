@@ -7,17 +7,21 @@
 @time: 2018/12/22 9:47
 @desc:
 '''
-
+import os,sys,inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir) 
 import numpy as np
 import scipy.io
-import os
+
 import json
 import torch.utils.data
 from backbone.model import SE_IR, MobileFaceNet, l2_norm
+# from backbone.model_irse import IR_50
 from dataset.lfw import LFW
 import torchvision.transforms as transforms
 from torch.nn import DataParallel
-import argparse
+import config
 
 def getAccuracy(scores, flags, threshold):
     p = np.sum(scores[flags == 1] > threshold)
@@ -55,16 +59,19 @@ def evaluation_10_fold(feature_path='./result/cur_epoch_result.mat'):
 
         scores = np.sum(np.multiply(featureLs, featureRs), 1)
         threshold = getThreshold(scores[valFold[0]], flags[valFold[0]], 10000)
+        print(threshold)
         ACCs[i] = getAccuracy(scores[testFold[0]], flags[testFold[0]], threshold)
 
     return ACCs
 
-def loadModel(data_root, file_list, backbone_net, gpus='0', resume=None):
+def loadModel(config, backbone_net, gpus='0', resume=None):
 
     if backbone_net == 'MobileFace':
         net = MobileFaceNet()
     elif backbone_net == 'SERes50_IR':
-        net = Backbone(50, drop_ratio=0.4, mode='ir_se')
+        net = SE_IR(50, drop_ratio=0.4, mode='ir_se')
+    elif backbone_net == 'IR_50':
+        net = SE_IR(50, drop_ratio=0.6, mode='ir')
     else:
         print(args.backbone, ' is not available!')
 
@@ -75,7 +82,7 @@ def loadModel(data_root, file_list, backbone_net, gpus='0', resume=None):
     os.environ['CUDA_VISIBLE_DEVICES'] = gpus
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-    net.load_state_dict(torch.load(resume)['net_state_dict'])
+    net.load_state_dict(torch.load(resume))
 
     if multi_gpus:
         net = DataParallel(net).to(device)
@@ -83,10 +90,11 @@ def loadModel(data_root, file_list, backbone_net, gpus='0', resume=None):
         net = net.to(device)
 
     transform = transforms.Compose([
+        transforms.Resize((112, 112)),
         transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
         transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
     ])
-    lfw_dataset = LFW(data_root, file_list, transform=transform)
+    lfw_dataset = LFW(config, transform=transform)
     lfw_loader = torch.utils.data.DataLoader(lfw_dataset, batch_size=128,
                                              shuffle=False, num_workers=2, drop_last=False)
 
@@ -120,21 +128,10 @@ def getFeatureFromTorch(feature_save_dir, net, device, data_set, data_loader):
     scipy.io.savemat(feature_save_dir, result)
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description='Testing')
-    parser.add_argument('--root', type=str, default='/media/ramdisk/lfw_align_112', help='The path of lfw data')
-    parser.add_argument('--file_list', type=str, default='/media/ramdisk/pairs.txt', help='The path of lfw data')
-    parser.add_argument('--backbone_net', type=str, default='Res50_IR', help='MobileFace, Res50_IR, SERes50_IR, CBAMRes50_IR, Res100_IR, SERes100_IR, CBAMRes100_IR')
-    parser.add_argument('--feature_dim', type=int, default=512, help='feature dimension')
-    parser.add_argument('--resume', type=str, default='./model/MSCeleb_RES50_IR_20190115_144216/Iter_240000_net.ckpt',
-                        help='The path pf save model')
-    parser.add_argument('--feature_save_path', type=str, default='./result/cur_epoch_lfw_result.mat',
-                        help='The path of the extract features save, must be .mat file')
-    parser.add_argument('--gpus', type=str, default='2,3', help='gpu list')
-    args = parser.parse_args()
-
-    net, device, lfw_dataset, lfw_loader = loadModel(args.root, args.file_list, args.backbone_net, args.gpus, args.resume)
-    getFeatureFromTorch(args.feature_save_path, net, device, lfw_dataset, lfw_loader)
-    ACCs = evaluation_10_fold(args.feature_save_path)
+    conf = config.get_config(mode = 'training_eval')
+    net, device, lfw_dataset, lfw_loader = loadModel(conf, 'IR_50','0', './weights/model_ir50.pth')
+    getFeatureFromTorch('./result/cur_lfw_result.mat', net, device, lfw_dataset, lfw_loader)
+    ACCs = evaluation_10_fold('./result/cur_lfw_result.mat')
     for i in range(len(ACCs)):
         print('{}    {:.2f}'.format(i+1, ACCs[i] * 100))
     print('--------')

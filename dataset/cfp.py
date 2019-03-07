@@ -16,8 +16,7 @@ import torch.utils.data as data
 import PIL.Image as Image
 import torch
 import torchvision.transforms as transforms
-from config import get_config_train
-conf = get_config_train(training = False)
+
 def img_loader(path):
     try:
         with open(path, 'rb') as f:
@@ -29,10 +28,10 @@ def img_loader(path):
         print('Cannot load image ' + path)
 
 class CFP_FP(data.Dataset):
-    def __init__(self, root = conf.cfp_root, file_list = conf.cfp_file_list, transform=None, loader=img_loader):
+    def __init__(self, config, transform=None, loader=img_loader):
 
-        self.root = root
-        self.file_list = file_list
+        self.root = config.cfp_root
+        self.file_list = config.cfp_file_list
         self.transform = transform
         self.loader = loader
         self.nameLs = []
@@ -40,7 +39,7 @@ class CFP_FP(data.Dataset):
         self.folds = []
         self.flags = []
 
-        with open(file_list) as f:
+        with open(config.cfp_file_list) as f:
             pairs = f.read().splitlines()
         for i, p in enumerate(pairs):
             p = p.split(' ')

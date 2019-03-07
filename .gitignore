@@ -9,7 +9,7 @@ __pycache__/
 # Distribution / packaging
 .Python
 public_test/
-weights/
+/weights/
 build/
 develop-eggs/
 dist/

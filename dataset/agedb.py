@@ -15,8 +15,7 @@ import torch.utils.data as data
 import PIL.Image as Image
 import torch
 import torchvision.transforms as transforms
-from config import get_config_train
-conf = get_config_train(training = False)
+
 def img_loader(path):
     try:
         with open(path, 'rb') as f:
@@ -28,10 +27,10 @@ def img_loader(path):
         print('Cannot load image ' + path)
 
 class AgeDB30(data.Dataset):
-    def __init__(self, root = conf.agedb_root, file_list = conf.agedb_file_list, transform=None, loader=img_loader):
+    def __init__(self, config, transform=None, loader=img_loader):
 
-        self.root = root
-        self.file_list = file_list
+        self.root = config.agedb_root
+        self.file_list = config.agedb_file_list
         self.transform = transform
         self.loader = loader
         self.nameLs = []
@@ -39,7 +38,7 @@ class AgeDB30(data.Dataset):
         self.folds = []
         self.flags = []
 
-        with open(file_list) as f:
+        with open(config.agedb_file_list) as f:
             pairs = f.read().splitlines()
         for i, p in enumerate(pairs):
             p = p.split(' ')
@@ -74,17 +73,17 @@ class AgeDB30(data.Dataset):
         return len(self.nameLs)
 
 
-if __name__ == '__main__':
-    root = '/media/sda/AgeDB-30/agedb30_align_112'
-    file_list = '/media/sda/AgeDB-30/agedb_30_pair.txt'
+# if __name__ == '__main__':
+#     root = '/media/sda/AgeDB-30/agedb30_align_112'
+#     file_list = '/media/sda/AgeDB-30/agedb_30_pair.txt'
 
-    transform = transforms.Compose([
-        transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
-        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
-    ])
+#     transform = transforms.Compose([
+#         transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
+#         transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
+#     ])
 
-    dataset = AgeDB30(root, file_list, transform=transform)
-    trainloader = data.DataLoader(dataset, batch_size=64, shuffle=False, num_workers=2, drop_last=False)
-    for data in trainloader:
-        for d in data:
-            print(d[0].shape)
+#     dataset = AgeDB30(root, file_list, transform=transform)
+#     trainloader = data.DataLoader(dataset, batch_size=64, shuffle=False, num_workers=2, drop_last=False)
+#     for data in trainloader:
+#         for d in data:
+#             print(d[0].shape)

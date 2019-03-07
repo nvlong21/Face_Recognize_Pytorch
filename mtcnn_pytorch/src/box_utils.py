@@ -14,58 +14,40 @@ def nms(boxes, overlap_threshold=0.5, mode='union'):
     Returns:
         list with indices of the selected boxes
     """
-
     # if there are no boxes, return the empty list
     if len(boxes) == 0:
         return []
+    x1 = boxes[:, 0]
+    y1 = boxes[:, 1]
+    x2 = boxes[:, 2]
+    y2 = boxes[:, 3]
+    scores = boxes[:, 4]
 
-    # list of picked indices
-    pick = []
+    areas = (x2 - x1 + 1) * (y2 - y1 + 1)
+    order = scores.argsort()[::-1]
 
-    # grab the coordinates of the bounding boxes
-    x1, y1, x2, y2, score = [boxes[:, i] for i in range(5)]
+    keep = []
+    while order.size > 0:
+        i = order[0]
+        keep.append(i)
+        xx1 = np.maximum(x1[i], x1[order[1:]])
+        yy1 = np.maximum(y1[i], y1[order[1:]])
+        xx2 = np.minimum(x2[i], x2[order[1:]])
+        yy2 = np.minimum(y2[i], y2[order[1:]])
 
-    area = (x2 - x1 + 1.0)*(y2 - y1 + 1.0)
-    ids = np.argsort(score)  # in increasing order
-
-    while len(ids) > 0:
-
-        # grab index of the largest value
-        last = len(ids) - 1
-        i = ids[last]
-        pick.append(i)
-
-        # compute intersections
-        # of the box with the largest score
-        # with the rest of boxes
-
-        # left top corner of intersection boxes
-        ix1 = np.maximum(x1[i], x1[ids[:last]])
-        iy1 = np.maximum(y1[i], y1[ids[:last]])
-
-        # right bottom corner of intersection boxes
-        ix2 = np.minimum(x2[i], x2[ids[:last]])
-        iy2 = np.minimum(y2[i], y2[ids[:last]])
-
-        # width and height of intersection boxes
-        w = np.maximum(0.0, ix2 - ix1 + 1.0)
-        h = np.maximum(0.0, iy2 - iy1 + 1.0)
-
-        # intersections' areas
+        w = np.maximum(0.0, xx2 - xx1 + 1)
+        h = np.maximum(0.0, yy2 - yy1 + 1)
         inter = w * h
-        if mode == 'min':
-            overlap = inter/np.minimum(area[i], area[ids[:last]])
-        elif mode == 'union':
-            # intersection over union (IoU)
-            overlap = inter/(area[i] + area[ids[:last]] - inter)
 
-        # delete all boxes where overlap is too big
-        ids = np.delete(
-            ids,
-            np.concatenate([[last], np.where(overlap > overlap_threshold)[0]])
-        )
+        if mode is 'min':
+            ovr = inter / np.minimum(areas[i], areas[order[1:]])
+        else:
+            ovr = inter / (areas[i] + areas[order[1:]] - inter)
 
-    return pick
+        inds = np.where(ovr <= overlap_threshold)[0]
+        order = order[inds + 1]
+
+    return keep
 
 
 def convert_to_square(bboxes):
@@ -146,6 +128,8 @@ def get_image_boxes(bounding_boxes, img, size=24):
         img_box = np.zeros((h[i], w[i], 3), 'uint8')
 
         img_array = np.asarray(img, 'uint8')
+        if len(img_array.shape) == 2:
+            img_array = cv2.cvtColor(img_array, cv2.COLOR_GRAY2RGB)
         img_box[dy[i]:(edy[i] + 1), dx[i]:(edx[i] + 1), :] =\
             img_array[y[i]:(ey[i] + 1), x[i]:(ex[i] + 1), :]
 

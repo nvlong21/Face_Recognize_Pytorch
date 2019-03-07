@@ -6,27 +6,26 @@ from torchvision import transforms as trans
 import math
 from align_v2 import Face_Alignt
 from mtcnn import MTCNN
-from utils.utils import load_facebank, prepare_facebank
+from utils.utils import load_facebank, prepare_facebank, prepare_facebank_np
+import os
 class face_recognize(object):
     def __init__(self, conf):
         self.conf = conf
         if conf.use_mobilfacenet:
             self.model = MobileFaceNet(512).to(conf.device)
-            self.weight = './weights/model_mobilefacenet.pth'
         else:
-            self.model = SE_IR(50, 0.6, 'ir_se').to(conf.device)
-            self.weight = './weights/model_ir_se50.pth'
+            self.model = SE_IR(50, 0.4, conf.net_mode).to(conf.device)
+        self.use_tensor = conf.use_tensor     #If False: su dung numpy dung cho tuong lai khi trien khai qua Product Quantizers cho he thong lon
+        self.weight = conf.weight_path
+
         self.model.eval()
         self.threshold = conf.threshold
-        self.test_transform = trans.Compose([
-                    trans.ToTensor(),
-                    trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
-                ])
+        self.test_transform = conf.test_transform
         if conf.use_mtcnn:
             self.mtcnn = MTCNN()
         else:
             self.mtcnn = Face_Alignt(use_gpu = True)
-        self.tta = False
+        self.tta = True
         self.limit = conf.face_limit
         self.min_face_size = conf.min_face_size
         self.embeddings = None
@@ -35,28 +34,34 @@ class face_recognize(object):
         self.load_state(conf.device.type)
 
     def load_state(self, device='cpu'): 
+        if not os.path.isfile(self.weight):
+            if not os.path.exists('weights'):
+                os.mkdir('weights')
+            os.system(self.conf.url)
+            os.system('mv %s weights'%self.conf.url.split(' ')[-1])
+
         if device == 'cpu':        
             self.model.load_state_dict(torch.load(self.weight, map_location='cpu'))
         else:
             self.model.load_state_dict(torch.load(self.weight))     
 
     def _raw_load_facebank(self):
-        self.embeddings = torch.load(self.conf.facebank_path/'facebank.pth')
-        self.names = np.load(self.conf.facebank_path/'names.npy')
+        self.embeddings = torch.load('%s/facebank.pth'%self.conf.facebank_path)
+        self.names = np.load('%s/names.npy'%self.conf.facebank_path)
 
     def _raw_load_single_face(self, image, name='Unknow'):
         embeddings = []
         names = ['Unknown']
         embs = []
-        print(image)
+        assert not image is None, 'None is not image, please enter image path!'
         try:
             if isinstance(image, np.ndarray):
                 img = Image.fromarray(image)
+            elif isinstance(image, str):
+                assert os.path.isfile(image), 'No such image name: %s'%image
+                img = Image.open(image)
             else:
-                if isinstance(image, str):
-                    img = Image.open(image)
-                else:
-                    img = image
+                    img = image   
         except:
             pass
         if img.size != (112, 112):
@@ -66,25 +71,38 @@ class face_recognize(object):
                 mirror = trans.functional.hflip(img)
                 emb = self.model(self.test_transform(img).to(self.conf.device).unsqueeze(0))
                 emb_mirror = self.model(self.test_transform(mirror).to(self.conf.device).unsqueeze(0))
-                embs.append(l2_norm(emb + emb_mirror))
+                if self.use_tensor:
+                    embs.append(l2_norm(emb + emb_mirror))
+                else:
+                    embs.append(l2_norm(emb + emb_mirror).data.cpu().numpy())
             else:                        
                 embs.append(self.model(self.test_transform(img).to(self.conf.device).unsqueeze(0)))
         if not len(embs) == 0:
-            embedding = torch.cat(embs).mean(0,keepdim=True)
-            embeddings.append(embedding)
             names.append(name)
-            self.embeddings = torch.cat(embeddings)
-            self.names = np.array(names)
-        
-    def update_facebank():
-        self.embeddings, self.names = prepare_facebank(self.conf, self.model, self.mtcnn, self.tta)
-        return self.embeddings, self.names
+            names = np.array(names)
+            if self.use_tensor:
+                embedding = torch.cat(embs).mean(0,keepdim=True)
+                embeddings.append(embedding)
+                embeddings = torch.cat(embeddings)
+            else:
+                embedding = np.mean(embs,axis=0)
+                embeddings.append(embedding[0])
 
-    def load_facebank(self):
-        return self.embeddings, self.names
+        return embeddings, names
+            
+    def update_facebank(self):
+        if self.use_tensor:
+            embeddings, names = prepare_facebank(self.conf, self.model, self.mtcnn, self.tta)
+        else:
+            embeddings, names = prepare_facebank_np(self.conf, self.model, self.mtcnn, self.tta)
+        return embeddings, names
 
-    def align_multi(self, img):
-        bboxes, faces = self.mtcnn.align_multi(img, self.limit, self.min_face_size)
+    def load_facebanks(self):
+        embeddings, names = load_facebank(self.conf)
+        return embeddings, names
+
+    def align_multi(self, img, thresholds = [0.3, 0.6, 0.8], nms_thresholds=[0.6, 0.6, 0.6]):
+        bboxes, faces = self.mtcnn.align_multi(img, self.limit, self.min_face_size, thresholds = thresholds, nms_thresholds = nms_thresholds)
         return bboxes, faces
 
     def align(img):
@@ -92,6 +110,13 @@ class face_recognize(object):
         return face
 
     def infer(self, faces, target_embs):
+        if self.use_tensor:
+            min_idx, minimum, source_embs = self.infer_tensor(faces, target_embs)
+        else:
+            min_idx, minimum, source_embs = self.infer_numpy(faces, target_embs)
+        return min_idx, minimum, source_embs
+
+    def infer_tensor(self, faces, target_embs):
         '''
         faces : list of PIL Image
         target_embs : [n, 512] computed embeddings of faces in facebank
@@ -114,7 +139,35 @@ class face_recognize(object):
         dist = torch.sum(torch.pow(diff, 2), dim=1)
         minimum, min_idx = torch.min(dist, dim=1)
         min_idx[minimum > self.threshold] = -1 # if no match, set idx to -1
-        return min_idx, minimum
+        return min_idx, minimum, source_embs
+    def infer_numpy(self, faces, target_embs):
+        '''
+        faces : list of PIL Image
+        target_embs : [n, 512] computed embeddings of faces in facebank
+        names : recorded names of faces in facebank
+        tta : test time augmentation (hfilp, that's all)
+        '''
+        embs = []
+        for img in faces:
+            if self.tta:
+                with torch.no_grad():
+                    mirror = trans.functional.hflip(img)
+                    emb = self.model(self.test_transform(img).to(self.conf.device).unsqueeze(0))
+                    emb_mirror = self.model(self.test_transform(mirror).to(self.conf.device).unsqueeze(0))
+                    embs.append(l2_norm(emb + emb_mirror).data.cpu().numpy())
+            else:
+                with torch.no_grad():                        
+                    embs.append(self.model(self.test_transform(img).to(self.conf.device).unsqueeze(0)).data.cpu().numpy())
+        source_embs = np.array(embs)
+        diff =  source_embs - np.expand_dims(target_embs, 0)
+        dist = np.sum(np.power(diff, 2), axis=2)
+        minimum = np.amin(dist, axis=1)
+
+        min_idx = np.argmin(dist, axis=1)
+
+        # minimum, min_idx = torch.min(dist, dim=1)
+        min_idx[minimum > self.threshold] = -1 # if no match, set idx to -1
+        return min_idx, minimum, source_embs
     def take_a_pic(self, name):
         save_path = self.conf.facebank_path/name
         if not save_path.exists():

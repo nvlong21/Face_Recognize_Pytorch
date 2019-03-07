@@ -5,8 +5,8 @@ import cv2
 import os
 import torch
 import PIL.Image as Image
-from config import get_config_train
-conf = get_config_train()
+from config import get_config
+conf = get_config(mode='training_eval')
 def img_loader(path):
     try:
         with open(path, 'rb') as f:
@@ -19,14 +19,14 @@ def img_loader(path):
         print('Cannot load image ' + path)
 
 class VGG_FP(data.Dataset):
-    def __init__(self, root= conf['train_root'], file_list = conf.file_list, transform=None, loader=img_loader):
-
-        self.root = root
+    def __init__(self, config, transform=None, loader=img_loader):
+        self.root = config.train_root
+        self.file_list = config.file_list
         self.transform = transform
         self.loader = loader
         image_list = []
         label_list = []
-        with open(file_list) as f:
+        with open(config.file_list) as f:
             img_label_list = f.read().splitlines()
         for info in img_label_list:
             image_path, label_name = info.split(' ')
