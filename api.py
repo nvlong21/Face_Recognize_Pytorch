@@ -17,6 +17,7 @@ class face_recognize(object):
             self.model = SE_IR(50, 0.4, conf.net_mode).to(conf.device)
         self.use_tensor = conf.use_tensor     #If False: su dung numpy dung cho tuong lai khi trien khai qua Product Quantizers cho he thong lon
         self.weight = conf.weight_path
+        
 
         self.model.eval()
         self.threshold = conf.threshold
@@ -24,7 +25,10 @@ class face_recognize(object):
         if conf.use_mtcnn:
             self.mtcnn = MTCNN()
         else:
-            self.mtcnn = Face_Alignt(use_gpu = True)
+            use_gpu = False
+            if not conf.device == 'cpu':
+                use_gpu = True
+            self.mtcnn = Face_Alignt(use_gpu = use_gpu)
         self.tta = True
         self.limit = conf.face_limit
         self.min_face_size = conf.min_face_size
