@@ -14,6 +14,7 @@ from torch.nn import DataParallel
 from datetime import datetime
 from backbone.model import SE_IR, MobileFaceNet, l2_norm
 from backbone.MNasnet import MnasNet
+from backbone.model_proxyless_nas import ProxyNas
 from margin.ArcMarginProduct import ArcMarginProduct
 from utils.visualize import Visualizer
 from utils.logging import init_log
@@ -35,6 +36,12 @@ config = get_config(mode = 'training_eval')
 def train(args):
     # gpu init
     multi_gpus = False
+    best_lfw_acc = 0.0
+    best_lfw_iters = 0
+    best_agedb30_acc = 0.0
+    best_agedb30_iters = 0
+    best_cfp_fp_acc = 0.0
+    best_cfp_fp_iters = 0
     if len(args.gpus.split(',')) > 1:
         multi_gpus = True
     os.environ['CUDA_VISIBLE_DEVICES'] = args.gpus
@@ -48,42 +55,57 @@ def train(args):
     logging = init_log(save_dir)
     _print = logging.info
 
-    # dataset loader
-    transform = transforms.Compose([
-        transforms.Resize((112, 112)),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
-        transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
-    ])
-    # validation dataset
-    trainset = VGG_FP(config = config, transform=transform)
-    trainloader = torch.utils.data.DataLoader(trainset, batch_size = config.batch_size,
-                                             shuffle=True, num_workers=8, drop_last=False)
-    num_iter = len(trainset)//config.batch_size
-
-    numclass = trainset.class_nums
-
-    lfwdataset = LFW(config = config, transform=transform)
-    lfwloader = torch.utils.data.DataLoader(lfwdataset, batch_size=config.batch_size,
-                                             shuffle=False, num_workers=8, drop_last=False)
-    agedbdataset = AgeDB30(config = config,transform=transform)
-    agedbloader = torch.utils.data.DataLoader(agedbdataset, batch_size=config.batch_size,
-                                            shuffle=False, num_workers=8, drop_last=False)
-    cfpfpdataset = CFP_FP(config = config,transform=transform)
-    cfpfploader = torch.utils.data.DataLoader(cfpfpdataset, batch_size=config.batch_size,
-                                              shuffle=False, num_workers=8, drop_last=False)
 
     # define backbone and margin layer
     if args.backbone == 'MobileFace':
         net = MobileFaceNet(512).to(config.device)
-    if args.backbone == 'MNasMobile':
+    elif args.backbone == 'MNasMobile':
         net = MnasNet(512).to(config.device)
+    elif args.backbone == 'ProxyNas':
+        net = ProxyNas(512).to(config.device)
     elif args.backbone == 'SERes50_IR':
         net = SE_IR(50, 0.6, 'ir_se').to(config.device)
     elif args.backbone == 'IR_50':
         net = SE_IR(50, 0.6, 'ir').to(config.device)
     else:
         print(args.backbone, ' is not available!')
+    summary(net.to(config.device), (3,112,112))
+    #define tranform
+    if args.backbone == 'ProxyNas':
+        transform = transforms.Compose([
+        transforms.Resize(112, 112),
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225]
+        )])
+    else:
+        # dataset loader
+        transform = transforms.Compose([
+            transforms.Resize((112, 112)),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),  # range [0, 255] -> [0.0,1.0]
+            transforms.Normalize(mean=(0.5, 0.5, 0.5), std=(0.5, 0.5, 0.5))  # range [0.0, 1.0] -> [-1.0,1.0]
+        ])
+
+    # validation dataset
+    trainset = VGG_FP(config = config, transform=transform)
+    trainloader = torch.utils.data.DataLoader(trainset, batch_size = config.batch_size,
+                                             shuffle=True, num_workers=8, drop_last=False)
+    num_iter = len(trainset)//config.batch_size
+    numclass = trainset.class_nums
+
+    if args.has_test:   
+
+        lfwdataset = LFW(config = config, transform=transform)
+        lfwloader = torch.utils.data.DataLoader(lfwdataset, batch_size=config.batch_size,
+                                                 shuffle=False, num_workers=8, drop_last=False)
+        agedbdataset = AgeDB30(config = config,transform=transform)
+        agedbloader = torch.utils.data.DataLoader(agedbdataset, batch_size=config.batch_size,
+                                                shuffle=False, num_workers=8, drop_last=False)
+        cfpfpdataset = CFP_FP(config = config,transform=transform)
+        cfpfploader = torch.utils.data.DataLoader(cfpfpdataset, batch_size=config.batch_size,
+                                                  shuffle=False, num_workers=8, drop_last=False)
 
     if args.margin_type == 'ArcFace':
         margin = ArcMarginProduct(512, numclass, s=args.scale_size)
@@ -112,12 +134,7 @@ def train(args):
     else:
         net = net.to(device)
         margin = margin.to(device)
-    best_lfw_acc = 0.0
-    best_lfw_iters = 0
-    best_agedb30_acc = 0.0
-    best_agedb30_iters = 0
-    best_cfp_fp_acc = 0.0
-    best_cfp_fp_iters = 0
+
     total_iters = 1
     vis = Visualizer(env= args.backbone)
     start_epoch = total_iters//num_iter
@@ -136,9 +153,6 @@ def train(args):
                 vis.plot_curves({'lfw': np.float(nodes[1]), 'agedb-30': np.float(nodes[2]), 'cfp-fp': np.float(nodes[3])}, iters=np.float(nodes[0]),
                                 title='test accuracy', xlabel='iters', ylabel='test accuracy')
 
-
-
-    print(start_epoch)
     for epoch in range(1, args.total_epoch + 1):
         exp_lr_scheduler.step()
         if epoch < start_epoch:
@@ -197,8 +211,7 @@ def train(args):
                     os.path.join(save_dir, 'Iter_%06d_margin.ckpt' % total_iters))
 
             # test accuracy
-            if total_iters % 1 == 0:
-
+            if total_iters % args.test_freq == 0 and args.has_test:
                 # test model on lfw
                 net.eval()
                 getFeatureFromTorch('./result/cur_lfw_result.mat', net, device, lfwdataset, lfwloader)
@@ -250,6 +263,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--save_freq', type=int, default=5000, help='save frequency')
     parser.add_argument('--test_freq', type=int, default=5000, help='test frequency')
+    parser.add_argument('--has_test', type=int, default=0, help='check test flag')
     parser.add_argument('--resume', type=int, default=1, help='resume model')
     parser.add_argument('--net_path', type=str, default='weights/MNASMOBILE20190221_023524/Iter_045000_net.ckpt', help='resume model')
     parser.add_argument('--margin_path', type=str, default='weights/MNASMOBILE20190221_023524/Iter_045000_margin.ckpt', help='resume model')

@@ -47,6 +47,8 @@ Run on video:
 ```
 python3 infer_on_video.py 
 ```
+[Video](https://www.dropbox.com/s/7g26jvp1j4epo7n/video.mp4?dl=0) and [Face bank](https://www.dropbox.com/s/4pstxap2uozvukc/Face_bank.zip?dl=0).Download video, Face bank and extract in dir.
+
 ### Docker:
 Install docker
 ```
