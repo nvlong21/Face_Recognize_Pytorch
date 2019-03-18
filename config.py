@@ -46,7 +46,7 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
         if net_size =='mobi':
             conf.use_mobilfacenet = True
             conf.weight_path = './weights/model_mobilefacenet.pth'
-            conf.url = list_model[3]
+            conf.url = list_model[0]
 
     if mode =='training_eval':
         conf.lr = 1e-3
