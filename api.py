@@ -26,7 +26,7 @@ class face_recognize(object):
             self.mtcnn = MTCNN()
         else:
             use_gpu = False
-            if not conf.device == 'cpu':
+            if not str(conf.device) == 'cpu':
                 use_gpu = True
             self.mtcnn = Face_Alignt(use_gpu = use_gpu)
         self.tta = True
