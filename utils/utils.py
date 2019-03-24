@@ -11,6 +11,7 @@ from backbone.model import l2_norm
 import pdb
 import cv2
 from pathlib import Path
+from tqdm import tqdm
 def separate_bn_paras(modules):
     if not isinstance(modules, list):
         modules = [*modules.modules()]
@@ -32,7 +33,7 @@ def prepare_facebank(conf, model, mtcnn, tta = True):
     model.eval()
     embeddings =  []
     names = ['Unknown']
-    for path in Path(conf.facebank_path).iterdir():
+    for path in tqdm(Path(conf.facebank_path).iterdir()):
         if path.is_file():
             continue
         else:
@@ -77,7 +78,7 @@ def prepare_facebank_np(conf, model, mtcnn, tta = True):
     model.eval()
     embeddings =  []
     names = ['Unknown']
-    for path in Path(conf.facebank_path).iterdir():
+    for path in tqdm(Path(conf.facebank_path).iterdir()):
         if path.is_file():
             continue
         else:
