@@ -32,7 +32,7 @@ def separate_bn_paras(modules):
 def prepare_facebank(conf, model, mtcnn, tta = True):
     model.eval()
     embeddings =  []
-    names = ['Unknown']
+    names = []
     for path in tqdm(Path(conf.facebank_path).iterdir()):
         if path.is_file():
             continue
@@ -69,6 +69,7 @@ def prepare_facebank(conf, model, mtcnn, tta = True):
         embedding = torch.cat(embs).mean(0,keepdim=True)
         embeddings.append(embedding)
         names.append(path.name)
+    names.append('Unknown')
     embeddings = torch.cat(embeddings)
     names = np.array(names)
     torch.save(embeddings, '%s/facebank.pth'%conf.facebank_path)
@@ -77,7 +78,7 @@ def prepare_facebank(conf, model, mtcnn, tta = True):
 def prepare_facebank_np(conf, model, mtcnn, tta = True):
     model.eval()
     embeddings =  []
-    names = ['Unknown']
+    names = []
     for path in tqdm(Path(conf.facebank_path).iterdir()):
         if path.is_file():
             continue
@@ -114,6 +115,7 @@ def prepare_facebank_np(conf, model, mtcnn, tta = True):
         embedding = np.mean(embs,axis=0)
         embeddings.append(embedding[0])
         names.append(path.name)
+    names.append('Unknown')
     embeddings = np.array(embeddings)
     names = np.array(names)
     torch.save(embeddings, '%s/facebank.pth'%conf.facebank_path)
