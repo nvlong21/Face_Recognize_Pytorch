@@ -76,9 +76,9 @@ if __name__ == '__main__':
                         count_unknow+=1
 
                     if args.score:
-                        frame = draw_box_name(bbox, names[results[idx] + 1] + '_{:.2f}'.format(score[idx]), frame)
+                        frame = draw_box_name(bbox, names[results[idx]] + '_{:.2f}'.format(score[idx]), frame)
                     else:
-                        frame = draw_box_name(bbox, names[results[idx] + 1], frame)
+                        frame = draw_box_name(bbox, names[results[idx]], frame)
             video_writer.write(frame)
             cv2.imshow("face_recognize", frame)
             if cv2.waitKey(1) & 0xFF == ord('q'):
