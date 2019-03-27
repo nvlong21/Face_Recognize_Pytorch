@@ -3,7 +3,7 @@ import torch
 from PIL import Image
 from torch.autograd import Variable
 from mtcnn_pytorch.src.get_nets import PNet, RNet, ONet
-# from mtcnn_pytorch.src.model import  ONet
+
 from mtcnn_pytorch.src.box_utils import nms, calibrate_box, get_image_boxes, convert_to_square
 from mtcnn_pytorch.src.first_stage import run_first_stage
 from mtcnn_pytorch.src.align_trans import get_reference_facial_points, warp_and_crop_face
@@ -22,6 +22,8 @@ class MTCNN():
         
     def align(self, img):
         _, landmarks = self.detect_faces(img)
+        if len(landmarks) == 0:
+            return None
         facial5points = [[landmarks[0][j],landmarks[0][j+5]] for j in range(5)]
         warped_face = warp_and_crop_face(np.array(img), facial5points, self.refrence, crop_size=(112,112))
         return Image.fromarray(warped_face)
@@ -29,6 +31,8 @@ class MTCNN():
     def align_multi(self, img, limit=None, min_face_size=30.0, thresholds = [0.3, 0.6, 0.8], nms_thresholds=[0.6, 0.6, 0.6]):
         boxes, landmarks = self.detect_faces(img, min_face_size, thresholds= thresholds,
                      nms_thresholds = nms_thresholds)
+        if len(boxes) ==0:
+            return [], []
         if limit:
             boxes = boxes[:limit]
             landmarks = landmarks[:limit]
@@ -85,6 +89,9 @@ class MTCNN():
                 boxes = run_first_stage(image, self.pnet, scale=s, threshold=thresholds[0])
                 bounding_boxes.append(boxes)
             bounding_boxes = [i for i in bounding_boxes if i is not None]
+            if not len(bounding_boxes) > 0:
+                return [], []
+
             bounding_boxes = np.vstack(bounding_boxes)
             keep = nms(bounding_boxes[:, 0:5], nms_thresholds[0])
             bounding_boxes = bounding_boxes[keep]

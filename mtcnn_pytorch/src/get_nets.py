@@ -3,8 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from collections import OrderedDict
 import numpy as np
-
-
+import os
+WORK_PATH = os.path.dirname(os.path.abspath(__file__))
 class Flatten(nn.Module):
 
     def __init__(self):
@@ -52,7 +52,7 @@ class PNet(nn.Module):
         self.conv4_1 = nn.Conv2d(32, 2, 1, 1)
         self.conv4_2 = nn.Conv2d(32, 4, 1, 1)
 
-        weights = np.load('mtcnn_pytorch/src/weights/pnet.npy')[()]
+        weights = np.load('%s/weights/pnet.npy'%WORK_PATH)[()]
         # weights = torch.load('mtcnn_pytorch/src/weights/pnet_epoch_10.pt')
         for n, p in self.named_parameters():
             p.data = torch.FloatTensor(weights[n])
@@ -98,7 +98,7 @@ class RNet(nn.Module):
         self.conv5_1 = nn.Linear(128, 2)
         self.conv5_2 = nn.Linear(128, 4)
 
-        weights = np.load('mtcnn_pytorch/src/weights/rnet.npy')[()]
+        weights = np.load('%s/weights/rnet.npy'%WORK_PATH)[()]
         for n, p in self.named_parameters():
             p.data = torch.FloatTensor(weights[n])
 
@@ -149,7 +149,7 @@ class ONet(nn.Module):
         self.conv6_2 = nn.Linear(256, 4)
         self.conv6_3 = nn.Linear(256, 10)
 
-        weights = np.load('mtcnn_pytorch/src/weights/onet.npy')[()]
+        weights = np.load('%s/weights/onet.npy'%WORK_PATH)[()]
         for n, p in self.named_parameters():
             p.data = torch.FloatTensor(weights[n])
 

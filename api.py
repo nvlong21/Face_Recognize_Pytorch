@@ -6,8 +6,10 @@ from torchvision import transforms as trans
 import math
 from align_v2 import Face_Alignt
 from mtcnn import MTCNN
-from utils.utils import load_facebank, prepare_facebank, prepare_facebank_np
+from utils.utils import load_facebank as _load_facebank
+from utils.utils import prepare_facebank, prepare_facebank_np
 import os
+from utils.constants import MODEL_PATH
 class face_recognize(object):
     def __init__(self, conf):
         self.conf = conf
@@ -17,32 +19,41 @@ class face_recognize(object):
             self.model = SE_IR(50, 0.4, conf.net_mode).to(conf.device)
         self.use_tensor = conf.use_tensor     #If False: su dung numpy dung cho tuong lai khi trien khai qua Product Quantizers cho he thong lon
         self.weight = conf.weight_path
-        
 
         self.model.eval()
         self.threshold = conf.threshold
         self.test_transform = conf.test_transform
         if conf.use_mtcnn:
             self.mtcnn = MTCNN()
+            self.use_mtcnn = True
         else:
             use_gpu = False
             if not str(conf.device) == 'cpu':
                 use_gpu = True
             self.mtcnn = Face_Alignt(use_gpu = use_gpu)
+            self.use_mtcnn = False
         self.tta = True
         self.limit = conf.face_limit
         self.min_face_size = conf.min_face_size
-        self.embeddings = None
-        self.names = None
         self.with_facebank = False
         self.load_state(conf.device.type)
-
+        self.load_facebank()
+    def update_mtcnn(self, use_mtcnn):
+        if use_mtcnn and (not self.use_mtcnn):
+            self.mtcnn = MTCNN()
+        elif (not use_mtcnn) and self.use_mtcnn:
+            use_gpu = False
+            if (not str(self.conf.device) == 'cpu'):
+                use_gpu = True
+            self.mtcnn = Face_Alignt(use_gpu = use_gpu)
+            
     def load_state(self, device='cpu'): 
+        print(MODEL_PATH)
         if not os.path.isfile(self.weight):
-            if not os.path.exists('weights'):
-                os.mkdir('weights')
+            if not os.path.exists(MODEL_PATH):
+                os.mkdir(MODEL_PATH)
             os.system(self.conf.url)
-            os.system('mv %s weights'%self.conf.url.split(' ')[-1])
+            os.system('mv %s %s'%(self.conf.url.split(' ')[-1], MODEL_PATH))
 
         if device == 'cpu':        
             self.model.load_state_dict(torch.load(self.weight, map_location='cpu'))
@@ -53,7 +64,7 @@ class face_recognize(object):
         self.embeddings = torch.load('%s/facebank.pth'%self.conf.facebank_path)
         self.names = np.load('%s/names.npy'%self.conf.facebank_path)
 
-    def _raw_load_single_face(self, image, name='Unknow'):
+    def load_single_face(self, image, name='Unknow'):
         embeddings = []
         names = ['Unknown']
         embs = []
@@ -93,17 +104,22 @@ class face_recognize(object):
                 embeddings.append(embedding[0])
 
         return embeddings, names
+    def get_facebank(self):
+        return self.embeddings, self.names
             
     def update_facebank(self):
         if self.use_tensor:
-            embeddings, names = prepare_facebank(self.conf, self.model, self.mtcnn, self.tta)
+            self.embeddings, self.names = prepare_facebank(self.conf, self.model, self.mtcnn, self.tta)
         else:
-            embeddings, names = prepare_facebank_np(self.conf, self.model, self.mtcnn, self.tta)
-        return embeddings, names
+            self.embeddings, self.names = prepare_facebank_np(self.conf, self.model, self.mtcnn, self.tta)
+        return self.embeddings, self.names
 
-    def load_facebanks(self):
-        embeddings, names = load_facebank(self.conf)
-        return embeddings, names
+    def load_facebank(self):
+        try:
+            self.embeddings, self.names = _load_facebank(self.conf)
+        except:
+            self.embeddings, self.names =[], []
+        return self.embeddings, self.names
 
     def align_multi(self, img, thresholds = [0.3, 0.6, 0.8], nms_thresholds=[0.6, 0.6, 0.6]):
         bboxes, faces = self.mtcnn.align_multi(img, self.limit, self.min_face_size, thresholds = thresholds, nms_thresholds = nms_thresholds)
@@ -139,7 +155,7 @@ class face_recognize(object):
                 with torch.no_grad():                        
                     embs.append(self.model(self.test_transform(img).to(self.conf.device).unsqueeze(0)))
         source_embs = torch.cat(embs)
-        diff = source_embs.unsqueeze(-1) - target_embs.transpose(1, 0).unsqueeze(0)
+        diff = source_embs.unsqueeze(-1) - target_embs.transpose(1, 0).unsqueeze(0).to(self.conf.device)
         dist = torch.sum(torch.pow(diff, 2), dim=1)
         minimum, min_idx = torch.min(dist, dim=1)
         min_idx[minimum > self.threshold] = -1 # if no match, set idx to -1

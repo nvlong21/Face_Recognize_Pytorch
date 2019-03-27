@@ -13,6 +13,8 @@ __pycache__/
 .Python
 public_test/
 /weights/
+*.mp4/
+*.flv/
 build/
 develop-eggs/
 dist/

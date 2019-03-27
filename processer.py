@@ -9,7 +9,7 @@ import uuid
 import subprocess
 import zipfile
 import os
-
+from api import face_recognize
 def download_file_by_url(url, folder_name):
 	file_path = folder_name + '/' + url.split('/')[-1]
 	command = 'wget %s -P %s'%(url, folder_name)
@@ -36,11 +36,10 @@ def process(data):
 	return results
 
 def process_images(image_path='', path=''):
-    from api import face_recognize
+    
     conf = get_config()
     face_recognize = face_recognize(conf)
-    face_recognize._raw_load_single_face(image_path)
-    targets = face_recognize.embeddings
+    targets, names = face_recognize.load_single_face(image_path)
     submiter = [['image','x1','y1','x2','y2','result']]
     list_file = glob.glob(path + '/*')
     if os.path.isfile(list_file[0]) == False: 

@@ -26,7 +26,7 @@ if __name__ == '__main__':
 
     conf = get_config(net_size = 'large', net_mode = 'ir_se',threshold = args.threshold, use_mtcnn = args.use_mtcnn)
     face_recognize = face_recognize(conf)
-    targets , names = face_recognize._raw_load_single_face(args.image)
+    targets , names = face_recognize.load_single_face(args.image)
 
     submiter = [['image','x1','y1','x2','y2','result']]
     sample_df = pd.read_csv(args.csv)

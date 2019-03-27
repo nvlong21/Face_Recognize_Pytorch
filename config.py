@@ -3,6 +3,7 @@ from easydict import EasyDict as edict
 import torch
 import os
 from torchvision import transforms as trans
+from utils.constants import *
 list_model = ['wget https://www.dropbox.com/s/akktsgxp0n8cwn2/model_mobilefacenet.pth?dl=0 -O model_mobilefacenet.pth',
 'wget https://www.dropbox.com/s/kzo52d9neybjxsb/model_ir_se50.pth?dl=0 -O model_ir_se50.pth',
 'wget https://www.dropbox.com/s/rxavczg9dlxy3a8/model_ir50.pth?dl=0 -O model_ir50.pth']
@@ -14,13 +15,12 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
     conf.min_face_size = 30 
     if mode =='app':
         assert net_size in ['mobi', 'large'], 'net_size should be mobi or large, please change in cogfig.py'
-        conf.use_tensor = False
-        conf.data_path = os.path.dirname(os.path.abspath(__file__))
-        conf.work_path = 'work_space/'
-        conf.model_path = '%s/models'%conf.work_path
-        conf.log_path = '%s/log'%conf.work_path
-        conf.save_path = '%s/save'%conf.work_path
-        conf.facebank_path = '%s/Face_bank'%conf.data_path
+        conf.use_tensor = True
+        conf.work_path = WORK_PATH
+        conf.model_path = '%s/models'%WORK_PATH
+        conf.log_path = '%s/log'%WORK_PATH
+        conf.save_path = '%s/save'%WORK_PATH
+        conf.facebank_path = '%s/Face_bank'%WORK_PATH
         
         conf.threshold = threshold
         if use_mtcnn:
@@ -28,7 +28,6 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
         else:
             conf.use_mtcnn = False
         #when inference, at maximum detect 10 faces in one image, my laptop is slow
-        
         conf.test_transform = trans.Compose([
                         trans.ToTensor(),
                         trans.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5])
@@ -37,15 +36,15 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
             conf.use_mobilfacenet = False
             if net_mode == 'ir_se':
                 conf.net_mode = 'ir_se' # or 'ir'
-                conf.weight_path = './weights/model_ir_se50.pth'
+                conf.weight_path = '%s/weights/model_ir_se50.pth'%WORK_PATH
                 conf.url = list_model[1]
             else:
                 conf.net_mode = 'ir' # or 'ir'
-                conf.weight_path = './weights/model_ir50.pth'
+                conf.weight_path = '%s/weights/model_ir50.pth'%WORK_PATH
                 conf.url = list_model[2]
         if net_size =='mobi':
             conf.use_mobilfacenet = True
-            conf.weight_path = './weights/model_mobilefacenet.pth'
+            conf.weight_path = '%s/weights/model_mobilefacenet.pth'%WORK_PATH
             conf.url = list_model[0]
 
     if mode =='training_eval':

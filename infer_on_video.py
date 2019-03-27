@@ -30,7 +30,7 @@ if __name__ == '__main__':
         targets, names = face_recognize.update_facebank()
         print('facebank updated')
     else:
-        targets, names = face_recognize.load_facebanks()
+        targets, names = face_recognize.load_facebank()
         print('facebank loaded')
     if (not isinstance(targets, torch.Tensor)) and face_recognize.use_tensor:
         targets, names = face_recognize.update_facebank()
