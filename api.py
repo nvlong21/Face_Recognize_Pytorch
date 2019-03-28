@@ -24,7 +24,7 @@ class face_recognize(object):
         self.threshold = conf.threshold
         self.test_transform = conf.test_transform
         if conf.use_mtcnn:
-            self.mtcnn = MTCNN()
+            self.mtcnn = MTCNN(conf.device)
             self.use_mtcnn = True
         else:
             use_gpu = False

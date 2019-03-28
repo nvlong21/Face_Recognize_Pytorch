@@ -15,7 +15,7 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
     conf.min_face_size = 30 
     if mode =='app':
         assert net_size in ['mobi', 'large'], 'net_size should be mobi or large, please change in cogfig.py'
-        conf.use_tensor = True
+        conf.use_tensor = False
         conf.work_path = WORK_PATH
         conf.model_path = '%s/models'%WORK_PATH
         conf.log_path = '%s/log'%WORK_PATH
