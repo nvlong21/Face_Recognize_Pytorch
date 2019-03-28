@@ -9,19 +9,22 @@ list_model = ['wget https://www.dropbox.com/s/akktsgxp0n8cwn2/model_mobilefacene
 'wget https://www.dropbox.com/s/rxavczg9dlxy3a8/model_ir50.pth?dl=0 -O model_ir50.pth']
 def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn = 1, threshold = 1.25):
     conf = edict()
-    conf.device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    conf.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     conf.input_size = [112, 112]
     conf.face_limit = 5 
-    conf.min_face_size = 30 
+    conf.min_face_size = 30
+    conf.mode = mode
+    conf.net_size = net_size
+    conf.net_mode = net_mode 
     if mode =='app':
-        assert net_size in ['mobi', 'large'], 'net_size should be mobi or large, please change in cogfig.py'
+        assert net_size in ['mobi', 'large', None], 'net_size should be mobi or large, please change in cogfig.py'
         conf.use_tensor = True
         conf.work_path = WORK_PATH
         conf.model_path = '%s/models'%WORK_PATH
         conf.log_path = '%s/log'%WORK_PATH
         conf.save_path = '%s/save'%WORK_PATH
         conf.facebank_path = '%s/Face_bank'%WORK_PATH
-        
+
         conf.threshold = threshold
         if use_mtcnn:
             conf.use_mtcnn = True
@@ -46,6 +49,7 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
             conf.use_mobilfacenet = True
             conf.weight_path = '%s/weights/model_mobilefacenet.pth'%WORK_PATH
             conf.url = list_model[0]
+        conf.video_source = 0
 
     if mode =='training_eval':
         conf.lr = 1e-3

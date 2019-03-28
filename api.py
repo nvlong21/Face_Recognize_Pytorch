@@ -12,8 +12,11 @@ import os
 from utils.constants import MODEL_PATH
 class face_recognize(object):
     def __init__(self, conf):
+        self.setup(conf)
+
+    def setup(self, conf):
         self.conf = conf
-        if conf.use_mobilfacenet:
+        if self.conf.use_mobilfacenet:
             self.model = MobileFaceNet(512).to(conf.device)
         else:
             self.model = SE_IR(50, 0.4, conf.net_mode).to(conf.device)
@@ -24,7 +27,7 @@ class face_recognize(object):
         self.threshold = conf.threshold
         self.test_transform = conf.test_transform
         if conf.use_mtcnn:
-            self.mtcnn = MTCNN()
+            self.mtcnn = MTCNN(conf.device)
             self.use_mtcnn = True
         else:
             use_gpu = False
@@ -36,8 +39,9 @@ class face_recognize(object):
         self.limit = conf.face_limit
         self.min_face_size = conf.min_face_size
         self.with_facebank = False
-        self.load_state(conf.device.type)
+        self.load_state(self.conf.device.type)
         self.load_facebank()
+
     def update_mtcnn(self, use_mtcnn):
         if use_mtcnn and (not self.use_mtcnn):
             self.mtcnn = MTCNN()
@@ -48,7 +52,6 @@ class face_recognize(object):
             self.mtcnn = Face_Alignt(use_gpu = use_gpu)
             
     def load_state(self, device='cpu'): 
-        print(MODEL_PATH)
         if not os.path.isfile(self.weight):
             if not os.path.exists(MODEL_PATH):
                 os.mkdir(MODEL_PATH)
@@ -102,12 +105,12 @@ class face_recognize(object):
             else:
                 embedding = np.mean(embs,axis=0)
                 embeddings.append(embedding[0])
-
         return embeddings, names
     def get_facebank(self):
         return self.embeddings, self.names
             
     def update_facebank(self):
+        print('aaaaaa')
         if self.use_tensor:
             self.embeddings, self.names = prepare_facebank(self.conf, self.model, self.mtcnn, self.tta)
         else:

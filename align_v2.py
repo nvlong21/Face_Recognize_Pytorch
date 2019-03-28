@@ -6,7 +6,7 @@ import numpy as np
 import time
 from Face_Alignt.matlab_cp2tform import get_similarity_transform_for_cv2
 from PIL import Image
-import math
+import math, os
 def alignment(src_img, src_pts, default_square = True):
     ref_pts = np.array([[30.2946, 51.6963],
       [65.5318, 51.5014],
@@ -133,8 +133,8 @@ import glob, tqdm
 class Face_Alignt():
     def __init__(self, use_gpu = False):
         self.pnet, self.onet = PNet(),ONet() 
-        self.pnet.load_state_dict(torch.load('Face_Alignt/weight/msos_pnet_rotate.pt',map_location=lambda storage, loc:storage), strict=False) 
-        self.onet.load_state_dict(torch.load('Face_Alignt/weight/msos_onet_rotate.pt',map_location=lambda storage, loc:storage), strict=False)
+        self.pnet.load_state_dict(torch.load('%s/Face_Alignt/weight/msos_pnet_rotate.pt'%os.path.dirname(os.path.abspath(__file__)),map_location=lambda storage, loc:storage), strict=False) 
+        self.onet.load_state_dict(torch.load('%s/Face_Alignt/weight/msos_onet_rotate.pt'%os.path.dirname(os.path.abspath(__file__)),map_location=lambda storage, loc:storage), strict=False)
         self.onet.float()
         self.pnet.eval()
         self.onet.eval()
@@ -145,10 +145,10 @@ class Face_Alignt():
             self.onet.cuda()
         else:
             torch.set_num_threads(1)
-    def align_multi(self, img, limit=None, min_face_size=30.0):
+    def align_multi(self, img, limit=None, min_face_size=30.0, thresholds =  [0.3, 0.6, 0.8], nms_thresholds=[0.6, 0.6, 0.6]):
         boxes, faces =self.detect(img)
         return boxes, faces
-    def align(self, img):
+    def align(self, img, ):
         boxes, faces = self.detect(img)
         if len(faces) > 0:
             return faces[0]
@@ -172,13 +172,15 @@ class Face_Alignt():
                 ldmks[:,index_x] = ldmks[:,index_x] * h - torch.Tensor([pad1])
                 ldmks[:,index_y] = ldmks[:,index_y] * h 
             return boxes, ldmks
+
         if  isinstance(file, np.ndarray):
             im = file
         else:
-            if isinstance(file, str):
-                im = cv2.imread(file)
-            else:
+            if isinstance(file, Image.Image):
                 im = np.array(file)
+            else:
+                im = cv2.imread(file)
+                
         if im is None:
             print("can not open image:", file)
             return
@@ -212,12 +214,13 @@ class Face_Alignt():
             #get conf and loc(box)
             if self.use_gpu:
                 torch.cuda.synchronize()
-            loc,conf = self.pnet(torch.unsqueeze(im_tensor,0))
+
+            loc, conf = self.pnet(torch.unsqueeze(im_tensor,0))
             if self.use_gpu:
                 torch.cuda.synchronize()
         
             # print('forward time:{}s'.format(e_t-s_t))        
-            loc, conf = loc.detach().cpu(),conf.detach().cpu()
+            loc, conf = loc.detach().cpu(),conf.detach().cpu() 
             loc, conf = loc.data.squeeze(0),F.softmax(conf.squeeze(0))
             boxes, anchor, crop = decode_box(loc,size=img_size)
             which_img = torch.tensor([scale]).long().expand((crop.shape[0],))
@@ -237,7 +240,8 @@ class Face_Alignt():
         t_confs[:,0] = 0.6
         max_conf, labels = t_confs.max(1)
         if labels.long().sum().item() is 0:
-            return None
+
+            return [], []
         ids = labels.nonzero().squeeze(1)
         t_boxes, t_confs, t_anchors, t_crops, t_which = t_boxes[ids], t_confs[ids], t_anchors[ids], t_crops[ids], t_which[ids]
         max_conf = max_conf[ids]
