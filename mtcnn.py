@@ -20,7 +20,6 @@ class MTCNN():
         self.onet.eval()
         self.refrence = get_reference_facial_points(default_square= True)
         self.device = device
-
         
     def align(self, img):
         _, landmarks = self.detect_faces(img)

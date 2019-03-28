@@ -15,7 +15,6 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
     conf.min_face_size = 30
     conf.mode = mode
     conf.net_size = net_size
-    conf.net_mode = net_mode 
     if mode =='app':
         assert net_size in ['mobi', 'large', None], 'net_size should be mobi or large, please change in cogfig.py'
         conf.use_tensor = True
@@ -24,7 +23,6 @@ def get_config(mode = 'app', net_size = 'large', net_mode = 'ir_se', use_mtcnn =
         conf.log_path = '%s/log'%WORK_PATH
         conf.save_path = '%s/save'%WORK_PATH
         conf.facebank_path = '%s/Face_bank'%WORK_PATH
-
         conf.threshold = threshold
         if use_mtcnn:
             conf.use_mtcnn = True
